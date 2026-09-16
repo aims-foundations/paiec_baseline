@@ -1,107 +1,88 @@
-# PAEC Predictor Baselines
+# PAIEC Predictor Baselines
 
-This repository contains reference implementations of two predictors for the
+This repository provides reference predictors for the
 [Predictive AI Evaluation Competition](https://aimslab.stanford.edu/competition).
-The BLF predictor retrieves evidence from the public measurement corpus and
-updates an explicit belief state; its acquisition function selects uncertain
-examples. The mean predictor estimates success rates from acquired labels and
-uses the platform's default random acquisition. Additional baselines can be
-added alongside these implementations.
+Each predictor estimates the probability that an AI system will answer an item
+correctly, using the supplied attributes and any labels acquired during evaluation.
+The implementations offer starting points for developing predictors and comparing
+the value of test-time adaptation.
+
+| Predictor | Method | Acquisition | Requirements |
+| --- | --- | --- | --- |
+| [Bayesian Linguistic Evaluator (BLE)](ble/README.md) | An LLM retrieves public evidence and revises an explicit belief state. | Uncertainty sampling using the current prediction. | Public data payload and model API credentials. |
+| [Empirical Mean](empirical_mean/README.md) | The mean acquired response for the target subject–benchmark pair; 0.5 without matching labels. | The evaluator's default random policy. | Python standard library only. |
 
 ## Repository layout
 
-All baseline source is under [`paec_competition_submission/`](paec_competition_submission/):
-
-- `submission/model.py` implements the required `predict(input, labeled)`
-  entry point.
-- `submission/labeling.py` implements uncertainty sampling using BLF predictions
-  conditioned on previously acquired labels.
-- `submission/src/` contains the vendored BLF agent and configuration code.
-- `submission/comp_pipeline/` contains the offline retrieval tools.
-- `tools/prepare_data.py` prepares the external data payload.
-- `tools/build_zip.sh` builds a competition-compatible archive.
-- `tools/smoke_test.py` exercises the submission locally.
-
-Generated payloads, private configuration, runtime state, logs, and submission
-ZIP files are intentionally excluded from Git.
-
-## Local smoke test
-
-From the competition directory, run the mock test without paid LLM calls:
-
-```bash
-cd paec_competition_submission
-python3 tools/smoke_test.py --mock
+```text
+ble/                    Bayesian Linguistic Evaluator and its README
+empirical_mean/         Empirical mean predictor and its README
+tools/                  Data preparation, packaging, and local tests
+check_submission_zip.py Submission archive validator
+submit_api.py           Codabench authentication and submission utility
 ```
 
-## Private submission configuration
+Each predictor directory contains `model.py`, implementing
+`predict(input, labeled) -> float`. BLE also supplies `labeling.py` for its
+acquisition policy. Build scripts place these entry points at the ZIP root,
+as required by the evaluator. Generated archives go into the ignored `dist/`
+directory; downloaded public training data go into the ignored `payload/`
+directory. Predictor setup and implementation details belong in each
+predictor's README.
 
-The tracked configuration is credential-free. Create an ignored private copy
-only when building a real competition submission:
+## Quick start
+
+Run commands from the repository root with Python 3.10 or later. The empirical
+mean baseline can be built and checked without downloading data or making API
+calls:
 
 ```bash
-cd paec_competition_submission
-cp submission/submission_config.example.json \
-   submission/submission_config.json
+python tools/build_mean_zip.py
+python check_submission_zip.py dist/empirical_mean.zip
 ```
 
-Use dedicated, spend-limited API keys. Never commit the private configuration
-or publish an archive containing those keys.
+For BLE, follow its [setup and walkthrough](ble/README.md#start-with-a-walkthrough).
+Its public build uses a blank configuration; a private submission build includes
+locally configured API credentials. Only credential-free archives should be
+shared. Both predictors use the competition's published
+[input and evaluation rules](https://aimslab.stanford.edu/competition).
 
-After preparing the public data payload, build with an explicit mode:
+## Submitting to Codabench
 
-```bash
-./tools/build_zip.sh --public bundle   # blf_public.zip, blank credentials
-./tools/build_zip.sh --private bundle  # blf_submission.zip, local credentials
-```
-
-Public builds use only the example configuration, even when a private
-configuration exists. Recipients must supply their own credentials to run BLF.
-
-See the [competition baseline documentation](paec_competition_submission/README.md)
-for payload preparation, packaging, and runtime details.
-
-## Mean predictor baseline
-
-The [mean predictor](paec_competition_submission/mean_submission/README.md)
-provides a simpler comparison: it predicts the mean acquired response for each
-subject–benchmark pair, using 0.5 before any matching labels are observed. It
-uses the platform's default random acquisition and needs no model API or data
-payload. Run `python paec_competition_submission/tools/build_mean_zip.py` to
-create `paec_competition_submission/mean_submission.zip`. Its group matching
-requires `benchmark_id` in the supplied item dictionaries; see the baseline's
-README for evaluator compatibility.
-
-## Codabench authentication and status
-
-From the repository root, save a Codabench token without putting credentials
-in chat or shell history:
+Install `requests` for the submission utility, then authenticate with an approved
+competition account. Login prompts for credentials and saves the API token at
+`~/.config/paiec/codabench-token` with owner-only permissions; it does not save
+the password or add the token to a submission archive.
 
 ```bash
+python -m pip install requests
 python submit_api.py --login
+python submit_api.py dist/empirical_mean.zip
 python submit_api.py --list
 python submit_api.py --status SUBMISSION_ID
 ```
 
-Login prompts for your username and password and stores only the API token at
-`~/.config/paiec/codabench-token` with permissions `600`. It never saves the
-password or includes this token in the competition ZIP. `CODABENCH_TOKEN` takes
-precedence; `CODABENCH_TOKEN_FILE` overrides the saved-token location.
-The login, list, and status commands do not submit or rerun evaluations.
-Detailed logs remain subject to the competition's participant-access policy.
-
-To upload a prepared archive, use `python submit_api.py PATH_TO_ZIP`.
+Replace the archive path with `dist/ble_submission.zip` to submit BLE.
+`CODABENCH_TOKEN` overrides the saved token, and `CODABENCH_TOKEN_FILE` overrides
+its location. Login, list, and status commands do not submit evaluations.
 
 ## Developing additional baselines
 
-Commit source, documentation, and synthetic tests. Keep generated data, run
-outputs, submission archives, and private configuration in the ignored paths.
-After staging the intended files, review and check the exact staged contents:
+Add each predictor in its own directory with a method README, a `model.py` entry
+point, and an optional `labeling.py`. Shared development tools belong in `tools/`.
+Commit source, documentation, and synthetic tests; keep credentials, datasets,
+run outputs, and generated archives in ignored paths. The existing tests run
+without paid API calls:
+
+```bash
+python -m unittest discover -s tools -p 'test_*.py'
+```
+
+After selectively staging changes, review the staged diff and run the source
+check below. It detects prohibited artifact paths and common credential formats;
+manual review is still needed to establish the provenance of example data.
 
 ```bash
 git diff --cached
-python paec_competition_submission/tools/check_public_source.py
+python tools/check_public_source.py
 ```
-
-The check detects prohibited artifact paths and common credential formats;
-manual review is still needed to establish the provenance of example data.

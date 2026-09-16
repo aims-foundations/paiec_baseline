@@ -27,8 +27,8 @@ from unittest.mock import Mock, patch
 from urllib.error import HTTPError, URLError
 from urllib.request import ProxyHandler, build_opener
 
-_HERE = os.path.dirname(os.path.abspath(__file__))
-_SUB = os.path.normpath(os.path.join(_HERE, "..", "submission"))
+_HERE = str(Path(__file__).resolve().parent)
+_SUB = os.path.normpath(os.path.join(_HERE, "..", "ble"))
 _PAYLOAD = os.path.normpath(os.path.join(_HERE, "..", "payload"))
 sys.path.insert(0, _SUB)
 

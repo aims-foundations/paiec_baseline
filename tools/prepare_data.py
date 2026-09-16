@@ -3,12 +3,12 @@ prepare_data.py — Build the offline databank payload for the PAEC submission.
 
 The competition sandbox has no HuggingFace hub access at runtime, so the
 official public training corpus and item embeddings must be shipped: either
-bundled inside the submission zip (payload copied into submission/data +
-submission/embeddings) or published as a public HF repo that the platform
+bundled inside the submission zip (payload copied into data/ and
+embeddings/ at its root) or published as a public HF repo that the platform
 pre-downloads via models.txt.
 
 Run on a development machine with internet access and the dependencies from
-submission/requirements.txt installed. Each build downloads the current main
+ble/requirements.txt installed. Each build downloads the current main
 branches of measurement-db and measurement-db-embed for later offline use;
 it does not generate item embeddings. No historical commit is hardcoded.
 

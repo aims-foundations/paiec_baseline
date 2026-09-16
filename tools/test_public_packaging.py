@@ -1,4 +1,4 @@
-"""Verify that sharing a BLF archive cannot silently include local credentials."""
+"""Verify that sharing a BLE archive cannot silently include local credentials."""
 
 import json
 from pathlib import Path
@@ -20,7 +20,7 @@ class PublicPackagingTests(unittest.TestCase):
             Path(__file__).with_name("build_zip.sh"),
             self.root / "tools/build_zip.sh",
         )
-        self.submission = self.root / "submission"
+        self.submission = self.root / "ble"
         self.submission.mkdir()
         for name in ("model.py", "labeling.py", "requirements.txt"):
             (self.submission / name).write_text("# synthetic fixture\n")
@@ -55,7 +55,7 @@ class PublicPackagingTests(unittest.TestCase):
     def test_public_build_ignores_local_keys_and_generated_source_artifacts(self):
         result = self.build("--public", "bundle")
         self.assertEqual(result.returncode, 0, result.stderr)
-        with ZipFile(self.root / "blf_public.zip") as archive:
+        with ZipFile(self.root / "dist/ble_public.zip") as archive:
             self.assertEqual(
                 json.loads(archive.read("submission_config.json")), self.example
             )
@@ -63,17 +63,17 @@ class PublicPackagingTests(unittest.TestCase):
                 self.assertNotIn(".env", name)
                 self.assertFalse(name.endswith(".log"))
                 self.assertNotIn(b"synthetic-private-key", archive.read(name))
-        self.assertFalse((self.root / "blf_submission.zip").exists())
+        self.assertFalse((self.root / "dist/ble_submission.zip").exists())
 
     def test_private_build_requires_explicit_mode_and_keeps_separate_output(self):
         self.assertNotEqual(self.build("bundle").returncode, 0)
         result = self.build("--private", "bundle")
         self.assertEqual(result.returncode, 0, result.stderr)
-        with ZipFile(self.root / "blf_submission.zip") as archive:
+        with ZipFile(self.root / "dist/ble_submission.zip") as archive:
             self.assertEqual(
                 json.loads(archive.read("submission_config.json")), self.private
             )
-        self.assertFalse((self.root / "blf_public.zip").exists())
+        self.assertFalse((self.root / "dist/ble_public.zip").exists())
 
     def test_public_build_refuses_credentials_in_example_config(self):
         (self.submission / "submission_config.example.json").write_text(
@@ -82,14 +82,14 @@ class PublicPackagingTests(unittest.TestCase):
         result = self.build("--public", "bundle")
         self.assertNotEqual(result.returncode, 0)
         self.assertNotIn("synthetic-private-key", result.stdout + result.stderr)
-        self.assertFalse((self.root / "blf_public.zip").exists())
+        self.assertFalse((self.root / "dist/ble_public.zip").exists())
 
     def test_hf_public_build_and_missing_private_config(self):
         (self.submission / "submission_config.json").unlink()
         self.assertNotEqual(self.build("--private", "bundle").returncode, 0)
         result = self.build("--public", "hf", "example/public-payload")
         self.assertEqual(result.returncode, 0, result.stderr)
-        with ZipFile(self.root / "blf_public.zip") as archive:
+        with ZipFile(self.root / "dist/ble_public.zip") as archive:
             config = json.loads(archive.read("submission_config.json"))
             self.assertEqual(config["api_keys"], self.example["api_keys"])
             self.assertEqual(config["hf_data_repo"], "example/public-payload")

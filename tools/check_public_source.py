@@ -14,6 +14,7 @@ import sys
 
 PRIVATE_DIRECTORIES = {
     "dist", "payload", "runs", "blf_runs", "emb_cache", ".venv", "__pycache__",
+    "paec_competition_submission",
 }
 PRIVATE_FILENAMES = {
     "submission_config.json", "models.txt", "excluded_benchmarks.txt",

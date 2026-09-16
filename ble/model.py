@@ -1,4 +1,4 @@
-"""PAEC baseline: predict a subject's probability of answering an item correctly.
+"""Bayesian Linguistic Evaluator: predict a subject's probability of success.
 
 Builds a question from the supplied subject and item, then runs the
 retrieval-based predictor. Revealed outcomes from the same subject provide

@@ -20,7 +20,7 @@ def load_predict(path):
 class MeanBaselineTests(unittest.TestCase):
     def setUp(self):
         root = Path(__file__).resolve().parents[1]
-        self.predict = load_predict(root / "mean_submission/model.py")
+        self.predict = load_predict(root / "empirical_mean/model.py")
         self.subject = {"normalized_name": "synthetic-model", "harness": "harness-a"}
         self.item = {"item_content": "Synthetic target", "benchmark_id": "benchmark_274926"}
         self.target = [self.subject, self.item]

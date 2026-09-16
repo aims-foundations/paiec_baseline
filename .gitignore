@@ -11,14 +11,16 @@ __pycache__/
 .env.*
 !.env.example
 
-# PAEC competition artifacts. Keep these locally when needed, but never
-# commit generated payloads, private configs, runtime state, or submission
-# archives.
-paec_competition_submission/payload/
-paec_competition_submission/dist/
-paec_competition_submission/.venv/
-paec_competition_submission/*.zip
-paec_competition_submission/*.log
-paec_competition_submission/submission/blf_runs/
-paec_competition_submission/submission/submission_config.json
-paec_competition_submission/submission/models.txt
+# Generated data, archives, environments, and local predictor configuration.
+/payload
+/dist/
+.venv/
+.ruff_cache/
+*.zip
+*.log
+blf_runs/
+submission_config.json
+models.txt
+
+# Archived local development artifacts and compatibility paths.
+/paec_competition_submission/

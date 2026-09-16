@@ -1,14 +1,15 @@
-# PAEC baseline — BLF belief-state predictor
+# Bayesian Linguistic Evaluator (BLE)
 
 The [Predictive AI Evaluation Competition](https://aimslab.stanford.edu/competition)
 calls `predict([subject, item], labeled)` once per target response. This baseline
 asks an LLM to estimate P(correct), retrieve related public evidence, and revise
 its estimate before submitting. It fits no parameters to the response tables.
 
-This README supports local development and researcher walkthroughs. The
-submission code contains the function-level explanation of the method.
+The LLM expresses Bayesian reasoning in its prompts; there is no separate
+numerical posterior-update formula. This README covers the method and local
+setup; shared submission instructions are in the [repository README](../README.md).
 
-A separate [mean predictor baseline](mean_submission/README.md) estimates each
+A separate [empirical mean predictor](../empirical_mean/README.md) estimates each
 subject–benchmark pair's success rate from acquired labels, with 0.5 at budget
 0. It requires no API calls or training corpus and uses default random
 acquisition. Its anonymous benchmark input field is prepared for the next
@@ -16,12 +17,13 @@ streaming infrastructure release; see its README for packaging and checks.
 
 ## Start with a walkthrough
 
-Run these commands from this directory, in a Python 3.10+ environment:
+Run all commands in this README from the repository root, in a Python 3.10+
+environment:
 
 ```bash
 python -m venv .venv
 source .venv/bin/activate
-python -m pip install -r submission/requirements.txt
+python -m pip install -r ble/requirements.txt
 python tools/smoke_test.py --mock --walkthrough
 ```
 
@@ -29,21 +31,20 @@ Mock mode uses small synthetic tables and scripted LLM replies. It needs no
 API keys or downloaded corpus, exercises the real retrieval and agent loop,
 and shows when evidence reaches the next turn. Its example probabilities are
 illustrative. It also checks invalid calls, API/tool failures, deadlines,
-probability bounds, revealed-label handling, and streaming acquisition decisions without
-revealed evidence.
+probability bounds, revealed-label handling, and streaming acquisition decisions using previously acquired evidence.
 
 ## Read the method in this order
 
 | File | What to look for |
 | --- | --- |
-| `submission/model.py` | `predict` contains question preparation, agent settings, the agent call, validation, and clipping. Read `build_question` next; configuration is loaded once above the functions, before the agent imports. |
-| `submission/src/agent/agent.py` | `run_agent`: the complete estimate/retrieve/revise/submit loop and its run logs. |
-| `submission/src/agent/prompts.py` | The instructions governing evidence selection and probability revision. |
-| `submission/src/agent/belief_state.py` | The running estimate, cumulative evidence, and shared probability bounds. |
-| `submission/src/agent/tools.py` | How an LLM-supplied belief is stored and a tool action is executed. |
-| `submission/comp_pipeline/script/agent_tools.py` | The retrieval tools' arguments and intended uses. |
-| `submission/comp_pipeline/script/databank.py` | Keyword ranking, score aggregation, item lookup, and trace retrieval. |
-| `submission/labeling.py` | The optional uncertainty-sampling acquisition function; participants can replace it with their own strategy. |
+| `ble/model.py` | `predict` contains question preparation, agent settings, the agent call, validation, and clipping. Read `build_question` next; configuration is loaded once above the functions, before the agent imports. |
+| `ble/src/agent/agent.py` | `run_agent`: the complete estimate/retrieve/revise/submit loop and its run logs. |
+| `ble/src/agent/prompts.py` | The instructions governing evidence selection and probability revision. |
+| `ble/src/agent/belief_state.py` | The running estimate, cumulative evidence, and shared probability bounds. |
+| `ble/src/agent/tools.py` | How an LLM-supplied belief is stored and a tool action is executed. |
+| `ble/comp_pipeline/script/agent_tools.py` | The retrieval tools' arguments and intended uses. |
+| `ble/comp_pipeline/script/databank.py` | Keyword ranking, score aggregation, item lookup, and trace retrieval. |
+| `ble/labeling.py` | The optional uncertainty-sampling acquisition function; participants can replace it with their own strategy. |
 
 Supporting code: `src/agent/llm_client.py` makes the prediction LLM requests;
 `src/config/config.py` holds loop settings; `dataroot.py` locates local tables;
@@ -93,90 +94,20 @@ the same public database; its loaded tables and indexes are shared to avoid
 repeated loading. Revealed labels and beliefs stay local to each prediction.
 No per-subject corpus files or subject/item hashes are needed.
 
-## Test-time adaptation: implement `labeling.py`
+## Acquisition policy
 
-Participants implement `acquisition_function(input, prediction=None, labeled=None, context=None)`
-in `labeling.py`. The platform computes the current candidate's prediction using
-previously acquired labels, then passes that prediction to this hook. Return
-`True` to acquire the current response, or `False` to skip it permanently.
-The hook can adapt to prior evidence without another BLF call.
+`acquisition_function(input, prediction=None, labeled=None, context=None)` uses
+the prediction already computed for the current acquisition candidate,
+conditioned on previously acquired labels. It requests the candidate's response
+when the probability is within 0.15 of 0.5, or when every remaining candidate
+must be selected to fill the remaining budget. It returns a boolean decision
+and makes no additional model call.
 
-```python
-def acquisition_function(input: list[dict], prediction: float | None = None,
-                         labeled: list | None = None, context: dict | None = None) -> bool | float:
-    if context is None:
-        # When called by an older evaluator, return a representative-length
-        # priority. The new evaluator supplies context and uses the policy below.
-        content = str(input[1].get("item_content") or "")
-        return float(-abs(len(content) - 1200))
-    if prediction is None:
-        raise ValueError("Streaming uncertainty acquisition requires prediction")
-    if context["labels_remaining"] <= 0:
-        return False
-    # Reserve enough candidates to use the remaining budget. Earlier in the
-    # stream, prefer uncertain predictions. No additional model call is needed.
-    must_query = context["items_remaining"] <= context["labels_remaining"]
-    return bool(must_query or abs(prediction - 0.5) <= 0.15)
-```
-
-Each eligible subject–benchmark pair has at least **80 distinct items**, split
-once into persistent acquisition and evaluation pools in a 50/50 ratio. All runs
-of an item stay in the same pool. One purchase reveals one recorded binary
-response. Acquisition items are never scored; evaluation labels are never
-revealed. The stream order and existing pool assignments are shared across
-submissions.
-
-One adaptive acquisition trajectory supplies nested budgets **0, 1, 3, 7, 15, 31**
-per pair. `context` includes `subject_id`, `benchmark_id`, `labels_remaining`,
-`labels_acquired`, `max_labels` (31), and `items_remaining` (including the current
-candidate). `labeled` contains all examples revealed so far across sampled
-pairs, using the existing predictor input format. Acquisition proceeds
-sequentially; evaluation uses up to 16 concurrent calls at each checkpoint.
-All groups finish a checkpoint before any group receives higher-budget labels.
-
-The sample hook prefers probabilities within 0.15 of 0.5 and reserves enough
-remaining candidates to fill the budget. Its benefit over random acquisition
-needs empirical validation. Omitting `labeling.py` uses deterministic random
-selection. A failed or invalid streaming hook fails the run. Policies may acquire
-fewer labels; feedback reports the actual number at each cap.
-
-Work is at most approximately `A + 6E` predictor calls, where `A` and `E` refer
-to acquisition candidates and distinct evaluation inputs. Repeated evaluation
-inputs reuse predictions within each checkpoint. The approximately 1,000-item
-sample limit is before the 50/50 split, so it is not a 1,000-call limit.
-
-Scoring averages the six Brier scores with weights
-`[0.1, 0.2, 0.2, 0.2, 0.2, 0.1]`, then averages subject–benchmark pairs equally.
-This normalized area on `log2(1 + budget)` remains on the Brier scale. Private
-formative feedback reports the curve and calibration ECE with anonymous IDs.
-
-### Compatibility with existing acquisition hooks
-
-Existing `acquisition_function(input) -> float` submissions remain valid. The
-runtime inspects the signature and calls them with **one argument only**; a
-participant exception is never retried using another call shape. Finite numeric
-priorities, including negative scores and zero, retain their ranking meaning.
-
-For these legacy hooks, the platform scores every acquisition candidate once
-with no acquired labels available, commits all priorities, and reveals the top
-`n` candidates per subject–benchmark pair at budgets 0, 1, 3, 7, 15, 31. Ties use
-the fixed random candidate order. The resulting label prefixes are nested.
-This compatibility path uses pool ranking; it does not convert priorities into
-streaming decisions or make another predictor call on behalf of the hook.
-Evaluation items and their outcomes never enter this ranking pool.
-
-New hooks may declare `prediction=None`, `labeled=None`, and `context=None`.
-The runtime supplies supported named arguments (including keyword-only subsets),
-or all four positional arguments when that is the declared interface. These
-hooks return a native boolean decision. If `prediction` is accepted, the runtime
-computes it once and passes it in; a hook needing only labels/context avoids that
-extra prediction. The example hook also returns a numeric priority when invoked
-without context by an older evaluator.
-
-Both paths share the fixed evaluation pool, label caps, curve weights, and
-checkpoint commitments. This preserves the old **function interface and ranking
-semantics**, not old numerical results: the evaluation split and budgets have
-changed. Predictors that assume exactly five labels still need to be updated.
+The policy's benefit over random acquisition requires empirical validation.
+Its one-argument compatibility path returns an item-length priority for older
+evaluators; the streaming interface uses the uncertainty policy above. Pool
+assignment, label budgets, and scoring follow the competition's
+[test-time adaptation and evaluation rules](https://aimslab.stanford.edu/competition).
 
 ## Prepare a real run
 
@@ -202,8 +133,8 @@ changed. Predictors that assume exactly five labels still need to be updated.
 2. Create your private configuration:
 
    ```bash
-   cp -n submission/submission_config.example.json submission/submission_config.json
-   chmod 600 submission/submission_config.json
+   cp -n ble/submission_config.example.json ble/submission_config.json
+   chmod 600 ble/submission_config.json
    ```
 
    `llm` selects the predictor model, independently of the input subject.
@@ -248,14 +179,14 @@ changed. Predictors that assume exactly five labels still need to be updated.
 4. Package a private competition submission:
 
    ```bash
-   ./tools/build_zip.sh --private bundle
+   ./tools/build_zip.sh --private bundle  # dist/ble_submission.zip
    ```
 
-   The ZIP places `model.py` at its root and includes supporting source plus
+   The ZIP places `model.py` and `labeling.py` at its root and includes supporting source plus
    `payload/data` and optional `payload/embeddings`. Its config must supply
    the credentials needed in the evaluation sandbox. To share a credential-free
    archive, use `./tools/build_zip.sh --public bundle`; it creates
-   `blf_public.zip` using only the blank example configuration. The
+   `dist/ble_public.zip` using only the blank example configuration. The
    `--public hf <repo_id>` and `--private hf <repo_id>` build
    mode is for an organizer-approved payload mirror already prepared for local
    prefetching; the data preparation tool does not republish the corpus.
@@ -345,3 +276,7 @@ a fresh `run_*` directory beneath `BLF_OUT/runs/searches/` for each invocation
 identical inputs get separate log directories and independent agent runs.
 These identifiers do not enter the prompts. Treat traces as local research
 artifacts, not files to include in the release.
+
+Runtime environment settings retain their `BLF_` names for compatibility.
+Generated archives are written to `dist/`; shared upload and status commands
+are in the [repository README](../README.md#submitting-to-codabench).

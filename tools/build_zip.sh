@@ -6,15 +6,16 @@
 #   ./tools/build_zip.sh --private bundle
 #   ./tools/build_zip.sh --public hf <repo_id>
 #
-# Public builds produce blf_public.zip; private builds produce blf_submission.zip.
+# Public builds produce dist/ble_public.zip; private builds produce dist/ble_submission.zip.
 # Both place model.py at the ZIP ROOT (required by the platform).
 
 set -euo pipefail
-cd "$(dirname "$0")/.."
+REPOSITORY_ROOT=$(python3 -c 'from pathlib import Path; import sys; print(Path(sys.argv[1]).resolve().parents[1])' "$0")
+cd "$REPOSITORY_ROOT"
 
 case "${1:-}" in
-  --public) CONFIG=submission/submission_config.example.json; OUT=blf_public.zip ;;
-  --private) CONFIG=submission/submission_config.json; OUT=blf_submission.zip ;;
+  --public) CONFIG=ble/submission_config.example.json; OUT=dist/ble_public.zip ;;
+  --private) CONFIG=ble/submission_config.json; OUT=dist/ble_submission.zip ;;
   *) echo "usage: build_zip.sh --public|--private bundle|hf [repo_id]" >&2; exit 2 ;;
 esac
 RELEASE_KIND="$1"
@@ -30,14 +31,14 @@ fi
 STAGE=$(mktemp -d)
 trap 'rm -rf "$STAGE"' EXIT
 
-if [ -e submission/subjects.txt ] || [ -e submission/subjects.txt.example ]; then
+if [ -e ble/subjects.txt ] || [ -e ble/subjects.txt.example ]; then
   echo "subjects.txt is unsupported; the platform selects evaluated subjects" >&2
   exit 1
 fi
 
 # Stage an explicit allowlist so ignored or generated files are not swept into
 # the archive accidentally.
-cp submission/model.py submission/labeling.py submission/requirements.txt "$STAGE"/
+cp ble/model.py ble/labeling.py ble/requirements.txt "$STAGE"/
 python3 - "$STAGE" "$CONFIG" "$RELEASE_KIND" <<'EOF'
 import json, pathlib, shutil, sys
 stage = pathlib.Path(sys.argv[1])
@@ -46,10 +47,10 @@ if sys.argv[3] == "--public" and any(cfg.get("api_keys", {}).values()):
     raise SystemExit("public configuration must contain only blank API keys")
 (stage / "submission_config.json").write_text(json.dumps(cfg, indent=2) + "\n")
 for directory in ("src", "comp_pipeline"):
-    for source in (pathlib.Path("submission") / directory).rglob("*.py"):
+    for source in (pathlib.Path("ble") / directory).rglob("*.py"):
         if source.is_symlink() or any(p.is_symlink() for p in source.parents):
             raise SystemExit("refusing to package symlinked source")
-        target = stage / source.relative_to("submission")
+        target = stage / source.relative_to("ble")
         target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(source, target)
 EOF
@@ -110,6 +111,7 @@ else:
     print("Private submission archive: do not publish this file.")
 EOF
 
+mkdir -p "$(dirname "$OUT")"
 rm -f "$OUT"
 (cd "$STAGE" && zip -qr - .) > "$OUT"
 echo "Wrote $OUT ($(du -h "$OUT" | cut -f1))"
