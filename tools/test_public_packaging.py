@@ -20,6 +20,10 @@ class PublicPackagingTests(unittest.TestCase):
             Path(__file__).with_name("build_zip.sh"),
             self.root / "tools/build_zip.sh",
         )
+        shutil.copyfile(
+            Path(__file__).with_name("ble_packaging.py"),
+            self.root / "tools/ble_packaging.py",
+        )
         self.submission = self.root / "ble"
         self.submission.mkdir()
         for name in ("model.py", "labeling.py", "requirements.txt"):
@@ -96,6 +100,23 @@ class PublicPackagingTests(unittest.TestCase):
             self.assertEqual(
                 archive.read("models.txt"), b"example/public-payload\n"
             )
+
+    def test_only_manifest_listed_payload_files_are_packaged(self):
+        data = self.root / "payload/data"
+        (data / "unlisted.txt").write_text("do-not-distribute-unlisted-data")
+        result = self.build("--public", "bundle")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        with ZipFile(self.root / "dist/ble_public.zip") as archive:
+            self.assertNotIn("data/unlisted.txt", archive.namelist())
+
+    def test_payload_paths_cannot_escape_the_public_data_directory(self):
+        path = self.root / "payload/data/corpus_manifest.json"
+        manifest = json.loads(path.read_text())
+        manifest["files"] = ["../../ble/submission_config.json"]
+        path.write_text(json.dumps(manifest))
+        result = self.build("--public", "bundle")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertFalse((self.root / "dist/ble_public.zip").exists())
 
 
 class PublicSourceCheckTests(unittest.TestCase):

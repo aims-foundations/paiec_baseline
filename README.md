@@ -11,20 +11,22 @@ the value of test-time adaptation.
 | --- | --- | --- | --- |
 | [Bayesian Linguistic Evaluator (BLE)](ble/README.md) | An LLM retrieves public evidence and revises an explicit belief state. | Uncertainty sampling using the current prediction. | Public data payload and model API credentials. |
 | [Empirical Mean](empirical_mean/README.md) | The mean acquired response for the target subject–benchmark pair; 0.5 without matching labels. | The evaluator's default random policy. | Python standard library only. |
+| [Empirical Mean with BLE Acquisition](empirical_mean_ble_acquisition/README.md) | The same empirical mean predictor. | Uncertainty sampling from a separate BLE estimate. | Public data payload and API credentials for acquisition only. |
 
 ## Repository layout
 
 ```text
 ble/                    Bayesian Linguistic Evaluator and its README
 empirical_mean/         Empirical mean predictor and its README
+empirical_mean_ble_acquisition/  Empirical mean with BLE acquisition
 tools/                  Data preparation, packaging, and local tests
 check_submission_zip.py Submission archive validator
 submit_api.py           Codabench authentication and submission utility
 ```
 
 Each predictor directory contains `model.py`, implementing
-`predict(input, labeled) -> float`. BLE also supplies `labeling.py` for its
-acquisition policy. Build scripts place these entry points at the ZIP root,
+`predict(input, labeled) -> float`. The two BLE acquisition variants also supply
+`labeling.py` for their policies. Build scripts place these entry points at the ZIP root,
 as required by the evaluator. Generated archives go into the ignored `dist/`
 directory; downloaded public training data go into the ignored `payload/`
 directory. Predictor setup and implementation details belong in each
@@ -44,7 +46,9 @@ python check_submission_zip.py dist/empirical_mean.zip
 For BLE, follow its [setup and walkthrough](ble/README.md#start-with-a-walkthrough).
 Its public build uses a blank configuration; a private submission build includes
 locally configured API credentials. Only credential-free archives should be
-shared. Both predictors use the competition's published
+shared. The BLE-acquisition mean baseline has its own
+[packaging instructions](empirical_mean_ble_acquisition/README.md#setup-and-packaging).
+All predictors use the competition's published
 [input and evaluation rules](https://aimslab.stanford.edu/competition).
 
 ## Submitting to Codabench

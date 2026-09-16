@@ -157,19 +157,24 @@ def _smoke_input() -> list:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("submission_zip", type=Path)
+    parser.add_argument(
+        "--static-only", action="store_true",
+        help="Check archive structure and declared files without calling participant code",
+    )
     args = parser.parse_args()
 
     try:
-        validate_submission_zip(args.submission_zip)
+        validate_submission_zip(args.submission_zip, static_only=args.static_only)
     except (RuntimeError, ValueError) as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         return 1
 
-    print(f"OK: {args.submission_zip} looks like a valid submission ZIP.")
+    suffix = " Static checks only; prediction and acquisition were not run." if args.static_only else ""
+    print(f"OK: {args.submission_zip} looks like a valid submission ZIP.{suffix}")
     return 0
 
 
-def validate_submission_zip(zip_path: Path) -> None:
+def validate_submission_zip(zip_path: Path, *, static_only: bool = False) -> None:
     if not zip_path.exists():
         raise ValueError(f"ZIP not found: {zip_path}")
     if not zipfile.is_zipfile(zip_path):
@@ -215,8 +220,9 @@ def validate_submission_zip(zip_path: Path) -> None:
             _check_requirements(submission_dir)
             _check_missing_local_artifacts(submission_dir)
             _check_declared_huggingface_model_references(submission_dir, set(models))
-            _check_model(submission_dir)
-            _check_labeling(submission_dir)
+            if not static_only:
+                _check_model(submission_dir)
+                _check_labeling(submission_dir)
 
 
 def _reject_unsafe_members(names: set[str]) -> None:
