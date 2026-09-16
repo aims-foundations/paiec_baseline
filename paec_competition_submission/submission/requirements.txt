@@ -1,0 +1,7 @@
+# Local setup list. Codabench does not install extra packages by default.
+# Luna and query embeddings use the Python standard library for API requests.
+# huggingface_hub is needed for local payload preparation and HF prefetch mode.
+huggingface_hub
+pandas
+pyarrow
+numpy

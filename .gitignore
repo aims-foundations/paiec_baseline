@@ -1,0 +1,24 @@
+__pycache__/
+*.py[cod]
+
+# Local outputs left by the retired fixed-retrieval pipeline. They are kept
+# ignored so an existing checkout can retain them without polluting Git.
+/emb_cache/
+/runs/
+
+# Local secrets and environment configuration
+.env
+.env.*
+!.env.example
+
+# PAEC competition artifacts. Keep these locally when needed, but never
+# commit generated payloads, private configs, runtime state, or submission
+# archives.
+paec_competition_submission/payload/
+paec_competition_submission/dist/
+paec_competition_submission/.venv/
+paec_competition_submission/*.zip
+paec_competition_submission/*.log
+paec_competition_submission/submission/blf_runs/
+paec_competition_submission/submission/submission_config.json
+paec_competition_submission/submission/models.txt
