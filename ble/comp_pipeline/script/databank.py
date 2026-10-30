@@ -157,10 +157,11 @@ class MeasurementDB:
                 + "; ".join(str(c) for c in shown)
                 + more
             )
-        lines.append(
-            f"Responses per item pair (trials): {bench['n_trials']}; "
-            f"total responses: {bench['n_responses']}"
-        )
+        if "n_trials" in bench:
+            trials = f"Responses per item pair (trials): {bench['n_trials']}"
+        else:  # current schema: max_trial is the largest trial index, not a count
+            trials = f"Maximum trial index: {bench.get('max_trial', 'unknown')}"
+        lines.append(f"{trials}; total responses: {bench['n_responses']}")
         if bench.get("saturation") is not None:
             lines[-1] += (
                 f"; mean score across all models (saturation): {bench['saturation']}"
@@ -170,7 +171,9 @@ class MeasurementDB:
             + ", ".join(t for t in ("items", "response", "traces") if self._has(d, t))
             + (
                 "; item ground-truth answers included"
-                if bench["has_ground_truth"]
+                if bench.get("has_ground_truth")
+                else "; reference answers for some items"
+                if bench.get("has_reference_answer")
                 else ""
             )
         )
